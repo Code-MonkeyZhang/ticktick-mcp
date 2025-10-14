@@ -5,6 +5,7 @@ import logging
 import re
 from datetime import datetime, timezone, date, timedelta
 from typing import Dict, List, Any, Optional
+from zoneinfo import ZoneInfo
 
 from mcp.server.fastmcp import FastMCP
 from dotenv import load_dotenv
@@ -20,6 +21,9 @@ mcp = FastMCP("ticktick")
 
 # Create TickTick client
 ticktick = None
+
+# Default timezone configuration
+DEFAULT_TIMEZONE = os.getenv("TICKTICK_DISPLAY_TIMEZONE", "Local")
 
 def initialize_client():
     global ticktick
@@ -50,19 +54,30 @@ def initialize_client():
         return False
 
 # Format a task object from TickTick for better display
-def format_task(task: Dict) -> str:
-    """Format a task into a human-readable string."""
+def format_task(task: Dict, show_local_time: bool = True) -> str:
+    """Format a task into a human-readable string with optional timezone conversion."""
     formatted = f"ID: {task.get('id', 'No ID')}\n"
     formatted += f"Title: {task.get('title', 'No title')}\n"
     
     # Add project ID
     formatted += f"Project ID: {task.get('projectId', 'None')}\n"
     
-    # Add dates if available
+    # Add dates with timezone conversion
     if task.get('startDate'):
-        formatted += f"Start Date: {task.get('startDate')}\n"
+        if show_local_time:
+            formatted += f"Start Date: {convert_utc_to_local(task.get('startDate'), task.get('timeZone'))}\n"
+        else:
+            formatted += f"Start Date: {task.get('startDate')} (UTC)\n"
+    
     if task.get('dueDate'):
-        formatted += f"Due Date: {task.get('dueDate')}\n"
+        if show_local_time:
+            formatted += f"Due Date: {convert_utc_to_local(task.get('dueDate'), task.get('timeZone'))}\n"
+        else:
+            formatted += f"Due Date: {task.get('dueDate')} (UTC)\n"
+    
+    # 显示任务的时区信息（如果有）
+    if task.get('timeZone'):
+        formatted += f"Task Timezone: {task.get('timeZone')}\n"
     
     # Add priority if available
     priority_map = {0: "None", 1: "Low", 3: "Medium", 5: "High"}
@@ -110,6 +125,55 @@ def format_project(project: Dict) -> str:
         formatted += f"Kind: {project.get('kind')}\n"
     
     return formatted
+
+# Helper function for timezone conversion
+def convert_utc_to_local(utc_time_str: str, target_timezone: str = None) -> str:
+    """
+    将UTC时间字符串转换为指定时区或本地时区的时间
+    
+    Args:
+        utc_time_str: UTC时间字符串，格式如 "2019-11-13T03:00:00+0000"
+        target_timezone: 目标时区，如 "Asia/Shanghai"，None表示使用系统本地时区
+        
+    Returns:
+        转换后的时间字符串，包含原始UTC时间和本地时间
+    """
+    if not utc_time_str:
+        return utc_time_str
+    
+    try:
+        # 解析UTC时间
+        normalized_date = normalize_iso_date(utc_time_str)
+        utc_dt = datetime.fromisoformat(normalized_date)
+        
+        # 确定目标时区：任务时区 > 配置时区 > 本地时区
+        if not target_timezone and DEFAULT_TIMEZONE != "Local":
+            target_timezone = DEFAULT_TIMEZONE
+        
+        # 转换为目标时区
+        if target_timezone:
+            # 如果指定了时区，尝试使用zoneinfo（Python 3.9+）
+            try:
+                from zoneinfo import ZoneInfo
+                local_dt = utc_dt.astimezone(ZoneInfo(target_timezone))
+                timezone_name = target_timezone
+            except (ImportError, Exception):
+                # 降级到系统本地时区
+                local_dt = utc_dt.astimezone()
+                timezone_name = "Local"
+        else:
+            # 使用系统本地时区
+            local_dt = utc_dt.astimezone()
+            timezone_name = "Local"
+        
+        # 格式化返回
+        local_time_str = local_dt.strftime("%Y-%m-%d %H:%M:%S")
+        return f"{local_time_str} ({timezone_name}) [UTC: {utc_time_str}]"
+        
+    except (ValueError, TypeError) as e:
+        # 如果转换失败，返回原始时间
+        logger.warning(f"Failed to convert timezone for {utc_time_str}: {e}")
+        return f"{utc_time_str} (UTC)"
 
 # Helper function for date validation
 def normalize_iso_date(date_str: str) -> str:
@@ -557,6 +621,17 @@ async def delete_project(project_id: str) -> str:
 
 PRIORITY_MAP = {0: "None", 1: "Low", 3: "Medium", 5: "High"}
 
+def get_user_timezone_today() -> date:
+    """Get today's date in the user's timezone."""
+    if DEFAULT_TIMEZONE and DEFAULT_TIMEZONE != "Local":
+        try:
+            user_tz = ZoneInfo(DEFAULT_TIMEZONE)
+            return datetime.now(user_tz).date()
+        except Exception:
+            # Fallback to local timezone if user timezone is invalid
+            pass
+    return datetime.now().date()
+
 def _is_task_due_today(task: Dict[str, Any]) -> bool:
     """Check if a task is due today."""
     due_date = task.get('dueDate')
@@ -564,8 +639,23 @@ def _is_task_due_today(task: Dict[str, Any]) -> bool:
         return False
     
     try:
-        task_due_date = datetime.strptime(due_date, "%Y-%m-%dT%H:%M:%S.%f%z").date()
-        today_date = datetime.now(timezone.utc).date()
+        # 使用normalize_iso_date来处理各种日期格式
+        normalized_date = normalize_iso_date(due_date)
+        task_due_dt = datetime.fromisoformat(normalized_date)
+        
+        # 将任务截止时间转换为用户时区
+        if DEFAULT_TIMEZONE and DEFAULT_TIMEZONE != "Local":
+            try:
+                user_tz = ZoneInfo(DEFAULT_TIMEZONE)
+                task_due_local = task_due_dt.astimezone(user_tz)
+            except Exception:
+                # Fallback to local timezone
+                task_due_local = task_due_dt.astimezone()
+        else:
+            task_due_local = task_due_dt.astimezone()
+        
+        task_due_date = task_due_local.date()
+        today_date = get_user_timezone_today()
         return task_due_date == today_date
     except (ValueError, TypeError):
         return False
@@ -577,8 +667,25 @@ def _is_task_overdue(task: Dict[str, Any]) -> bool:
         return False
     
     try:
-        task_due = datetime.strptime(due_date, "%Y-%m-%dT%H:%M:%S.%f%z")
-        return task_due < datetime.now(timezone.utc)
+        # 使用normalize_iso_date来处理各种日期格式
+        normalized_date = normalize_iso_date(due_date)
+        task_due = datetime.fromisoformat(normalized_date)
+        
+        # 获取用户时区的当前时间进行比较
+        if DEFAULT_TIMEZONE and DEFAULT_TIMEZONE != "Local":
+            try:
+                user_tz = ZoneInfo(DEFAULT_TIMEZONE)
+                now_user_tz = datetime.now(user_tz)
+                task_due_user_tz = task_due.astimezone(user_tz)
+            except Exception:
+                # Fallback to local timezone
+                now_user_tz = datetime.now()
+                task_due_user_tz = task_due.astimezone()
+        else:
+            now_user_tz = datetime.now()
+            task_due_user_tz = task_due.astimezone()
+        
+        return task_due_user_tz < now_user_tz
     except (ValueError, TypeError):
         return False
 
@@ -589,8 +696,23 @@ def _is_task_due_in_days(task: Dict[str, Any], days: int) -> bool:
         return False
     
     try:
-        task_due_date = datetime.strptime(due_date, "%Y-%m-%dT%H:%M:%S.%f%z").date()
-        target_date = (datetime.now(timezone.utc) + timedelta(days=days)).date()
+        # 使用normalize_iso_date来处理各种日期格式
+        normalized_date = normalize_iso_date(due_date)
+        task_due_dt = datetime.fromisoformat(normalized_date)
+        
+        # 将任务截止时间转换为用户时区
+        if DEFAULT_TIMEZONE and DEFAULT_TIMEZONE != "Local":
+            try:
+                user_tz = ZoneInfo(DEFAULT_TIMEZONE)
+                task_due_local = task_due_dt.astimezone(user_tz)
+            except Exception:
+                # Fallback to local timezone
+                task_due_local = task_due_dt.astimezone()
+        else:
+            task_due_local = task_due_dt.astimezone()
+        
+        task_due_date = task_due_local.date()
+        target_date = get_user_timezone_today() + timedelta(days=days)
         return task_due_date == target_date
     except (ValueError, TypeError):
         return False
@@ -672,7 +794,7 @@ def _validate_task_data(task_data: Dict[str, Any], task_index: int) -> Optional[
 
 def _get_project_tasks_by_filter(projects: List[Dict], filter_func, filter_name: str) -> str:
     """
-    Helper function to filter tasks across all projects.
+    Helper function to filter tasks across all projects AND Inbox.
     
     Args:
         projects: List of project dictionaries
@@ -685,8 +807,9 @@ def _get_project_tasks_by_filter(projects: List[Dict], filter_func, filter_name:
     if not projects:
         return "No projects found."
     
-    result = f"Found {len(projects)} projects:\n\n"
+    result = f"Found {len(projects)} projects + Inbox:\n\n"
     
+    # Regular projects
     for i, project in enumerate(projects, 1):
         if project.get('closed'):
             continue
@@ -710,6 +833,30 @@ def _get_project_tasks_by_filter(projects: List[Dict], filter_func, filter_name:
             result += f"Task {t}:\n{format_task(task)}\n"
         
         result += "\n\n"
+    
+    # Inbox
+    try:
+        inbox_data = ticktick.get_project_with_data("inbox")
+        if 'error' not in inbox_data:
+            inbox_project = inbox_data.get('project', {}) or {'name': 'Inbox'}
+            inbox_tasks = inbox_data.get('tasks', []) or []
+            
+            filtered_inbox_tasks = [(t, task) for t, task in enumerate(inbox_tasks, 1) if filter_func(task)]
+            
+            result += "Inbox:\n"
+            result += f"Name: {inbox_project.get('name', 'Inbox')}\n"
+            result += "ID: inbox\n"
+            result += f"With {len(filtered_inbox_tasks)} tasks that are to be '{filter_name}' in this project :\n"
+            
+            for t, task in filtered_inbox_tasks:
+                result += f"Task {t}:\n{format_task(task)}\n"
+            
+            result += "\n"
+        else:
+            result += f"Inbox: Error fetching inbox: {inbox_data['error']}\n"
+    except Exception as e:
+        logger.warning(f"Could not fetch inbox tasks: {e}")
+        result += f"Inbox: Could not fetch (error: {str(e)})\n"
     
     return result
 
@@ -877,8 +1024,23 @@ async def get_tasks_due_this_week() -> str:
                 return False
             
             try:
-                task_due_date = datetime.strptime(due_date, "%Y-%m-%dT%H:%M:%S.%f%z").date()
-                today = datetime.now(timezone.utc).date()
+                # 使用normalize_iso_date来处理各种日期格式
+                normalized_date = normalize_iso_date(due_date)
+                task_due_dt = datetime.fromisoformat(normalized_date)
+                
+                # 将任务截止时间转换为用户时区
+                if DEFAULT_TIMEZONE and DEFAULT_TIMEZONE != "Local":
+                    try:
+                        user_tz = ZoneInfo(DEFAULT_TIMEZONE)
+                        task_due_local = task_due_dt.astimezone(user_tz)
+                    except Exception:
+                        # Fallback to local timezone
+                        task_due_local = task_due_dt.astimezone()
+                else:
+                    task_due_local = task_due_dt.astimezone()
+                
+                task_due_date = task_due_local.date()
+                today = get_user_timezone_today()
                 week_from_today = today + timedelta(days=7)
                 return today <= task_due_date <= week_from_today
             except (ValueError, TypeError):
