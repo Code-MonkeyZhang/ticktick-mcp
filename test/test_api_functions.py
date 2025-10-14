@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any
 
 # 添加项目路径
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ticktick_mcp.src.ticktick_client import TickTickClient
 
