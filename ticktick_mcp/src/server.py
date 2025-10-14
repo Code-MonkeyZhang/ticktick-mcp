@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import logging
+import re
 from datetime import datetime, timezone, date, timedelta
 from typing import Dict, List, Any, Optional
 
@@ -110,11 +111,49 @@ def format_project(project: Dict) -> str:
     
     return formatted
 
+# Helper function for date validation
+def normalize_iso_date(date_str: str) -> str:
+    """
+    Normalize ISO date string to a format that Python's fromisoformat() can parse.
+    
+    Handles:
+    - "Z" suffix → "+00:00"
+    - "+0000" or "-0000" (no colon) → "+00:00" or "-00:00" (with colon)
+    - Already correct formats remain unchanged
+    
+    Args:
+        date_str: ISO date string in various formats
+        
+    Returns:
+        Normalized ISO date string that fromisoformat() can parse
+    """
+    if not date_str:
+        return date_str
+    
+    # Replace "Z" with "+00:00"
+    normalized = date_str.replace("Z", "+00:00")
+    
+    # Handle "+0000" or "-0000" format (add colon before last 2 digits)
+    # Match pattern: ends with +HHMM or -HHMM (4 digits after + or -)
+    # Pattern: ends with + or - followed by exactly 4 digits
+    pattern = r'([+-])(\d{2})(\d{2})$'
+    match = re.search(pattern, normalized)
+    if match:
+        # Replace with format: +HH:MM
+        normalized = re.sub(pattern, r'\1\2:\3', normalized)
+    
+    return normalized
+
 # MCP Tools
 
 @mcp.tool()
 async def get_projects() -> str:
-    """Get all projects from TickTick."""
+    """
+    Get all projects from TickTick.
+    
+    Note: This does not include the special "Inbox" project. 
+    To get inbox tasks, use the get_inbox_tasks tool separately.
+    """
     if not ticktick:
         if not initialize_client():
             return "Failed to initialize TickTick client. Please check your API credentials."
@@ -135,6 +174,44 @@ async def get_projects() -> str:
     except Exception as e:
         logger.error(f"Error in get_projects: {e}")
         return f"Error retrieving projects: {str(e)}"
+
+@mcp.tool()
+async def get_inbox_tasks() -> str:
+    """
+    Get tasks from the Inbox.
+    
+    The Inbox is a special system list in TickTick where tasks 
+    without a specific project are stored. This is useful for 
+    quick task capture that can be organized later.
+    """
+    if not ticktick:
+        if not initialize_client():
+            return "Failed to initialize TickTick client. Please check your API credentials."
+    
+    try:
+        # Use the special project ID "inbox" to access the inbox
+        inbox_data = ticktick.get_project_with_data("inbox")
+        
+        if 'error' in inbox_data:
+            return f"Error fetching inbox: {inbox_data['error']}"
+        
+        project = inbox_data.get('project', {})
+        tasks = inbox_data.get('tasks', [])
+        
+        if not tasks:
+            return "Your inbox is empty. 📭 Great job staying organized!"
+        
+        result = f"Inbox: {project.get('name', 'Inbox')}\n"
+        result += f"Found {len(tasks)} tasks:\n\n"
+        
+        for i, task in enumerate(tasks, 1):
+            result += f"Task {i}:\n" + format_task(task) + "\n"
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error in get_inbox_tasks: {e}")
+        return f"Error retrieving inbox tasks: {str(e)}"
 
 @mcp.tool()
 async def get_project(project_id: str) -> str:
@@ -216,9 +293,16 @@ async def create_task(
     title: str, 
     project_id: str, 
     content: str = None, 
+    desc: str = None,
     start_date: str = None, 
     due_date: str = None, 
-    priority: int = 0
+    priority: int = 0,
+    is_all_day: bool = False,
+    time_zone: str = None,
+    reminders: List[str] = None,
+    repeat_flag: str = None,
+    sort_order: int = None,
+    items: List[Dict[str, Any]] = None
 ) -> str:
     """
     Create a new task in TickTick.
@@ -227,9 +311,16 @@ async def create_task(
         title: Task title
         project_id: ID of the project to add the task to
         content: Task description/content (optional)
+        desc: Description of checklist (optional)
         start_date: Start date in ISO format YYYY-MM-DDThh:mm:ss+0000 (optional)
         due_date: Due date in ISO format YYYY-MM-DDThh:mm:ss+0000 (optional)
         priority: Priority level (0: None, 1: Low, 3: Medium, 5: High) (optional)
+        is_all_day: Whether this is an all-day task (optional, default: False)
+        time_zone: Time zone (e.g., "America/Los_Angeles") (optional)
+        reminders: List of reminder triggers (e.g., ["TRIGGER:P0DT9H0M0S", "TRIGGER:PT0S"]) (optional)
+        repeat_flag: Recurring rules (e.g., "RRULE:FREQ=DAILY;INTERVAL=1") (optional)
+        sort_order: Sort order value (optional)
+        items: List of subtask dictionaries (optional)
     """
     if not ticktick:
         if not initialize_client():
@@ -245,7 +336,8 @@ async def create_task(
             if date_str:
                 try:
                     # Try to parse the date to validate it
-                    datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                    normalized_date = normalize_iso_date(date_str)
+                    datetime.fromisoformat(normalized_date)
                 except ValueError:
                     return f"Invalid {date_name} format. Use ISO format: YYYY-MM-DDThh:mm:ss+0000"
         
@@ -253,9 +345,16 @@ async def create_task(
             title=title,
             project_id=project_id,
             content=content,
+            desc=desc,
             start_date=start_date,
             due_date=due_date,
-            priority=priority
+            priority=priority,
+            is_all_day=is_all_day,
+            time_zone=time_zone,
+            reminders=reminders,
+            repeat_flag=repeat_flag,
+            sort_order=sort_order,
+            items=items
         )
         
         if 'error' in task:
@@ -272,9 +371,16 @@ async def update_task(
     project_id: str,
     title: str = None,
     content: str = None,
+    desc: str = None,
     start_date: str = None,
     due_date: str = None,
-    priority: int = None
+    priority: int = None,
+    is_all_day: bool = None,
+    time_zone: str = None,
+    reminders: List[str] = None,
+    repeat_flag: str = None,
+    sort_order: int = None,
+    items: List[Dict[str, Any]] = None
 ) -> str:
     """
     Update an existing task in TickTick.
@@ -284,9 +390,16 @@ async def update_task(
         project_id: ID of the project the task belongs to
         title: New task title (optional)
         content: New task description/content (optional)
+        desc: New description of checklist (optional)
         start_date: New start date in ISO format YYYY-MM-DDThh:mm:ss+0000 (optional)
         due_date: New due date in ISO format YYYY-MM-DDThh:mm:ss+0000 (optional)
         priority: New priority level (0: None, 1: Low, 3: Medium, 5: High) (optional)
+        is_all_day: Whether this is an all-day task (optional)
+        time_zone: Time zone (e.g., "America/Los_Angeles") (optional)
+        reminders: List of reminder triggers (e.g., ["TRIGGER:P0DT9H0M0S", "TRIGGER:PT0S"]) (optional)
+        repeat_flag: Recurring rules (e.g., "RRULE:FREQ=DAILY;INTERVAL=1") (optional)
+        sort_order: Sort order value (optional)
+        items: List of subtask dictionaries (optional)
     """
     if not ticktick:
         if not initialize_client():
@@ -302,7 +415,8 @@ async def update_task(
             if date_str:
                 try:
                     # Try to parse the date to validate it
-                    datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                    normalized_date = normalize_iso_date(date_str)
+                    datetime.fromisoformat(normalized_date)
                 except ValueError:
                     return f"Invalid {date_name} format. Use ISO format: YYYY-MM-DDThh:mm:ss+0000"
         
@@ -311,9 +425,16 @@ async def update_task(
             project_id=project_id,
             title=title,
             content=content,
+            desc=desc,
             start_date=start_date,
             due_date=due_date,
-            priority=priority
+            priority=priority,
+            is_all_day=is_all_day,
+            time_zone=time_zone,
+            reminders=reminders,
+            repeat_flag=repeat_flag,
+            sort_order=sort_order,
+            items=items
         )
         
         if 'error' in task:
@@ -522,16 +643,30 @@ def _validate_task_data(task_data: Dict[str, Any], task_index: int) -> Optional[
         if date_str:
             try:
                 # Try to parse the date to validate it
-                # Handle both with and without timezone info
-                if date_str.endswith('Z'):
-                    datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-                elif '+' in date_str or date_str.endswith(('00', '30')):
-                    datetime.fromisoformat(date_str)
-                else:
-                    # Assume local timezone if no timezone specified
-                    datetime.fromisoformat(date_str)
+                normalized_date = normalize_iso_date(date_str)
+                datetime.fromisoformat(normalized_date)
             except ValueError:
                 return f"Task {task_index + 1}: Invalid {date_field} format '{date_str}'. Use ISO format: YYYY-MM-DDTHH:mm:ss or with timezone"
+    
+    # Validate is_all_day if provided
+    is_all_day = task_data.get('is_all_day')
+    if is_all_day is not None and not isinstance(is_all_day, bool):
+        return f"Task {task_index + 1}: 'is_all_day' must be a boolean (true/false)"
+    
+    # Validate reminders if provided
+    reminders = task_data.get('reminders')
+    if reminders is not None and not isinstance(reminders, list):
+        return f"Task {task_index + 1}: 'reminders' must be a list"
+    
+    # Validate items (subtasks) if provided
+    items = task_data.get('items')
+    if items is not None and not isinstance(items, list):
+        return f"Task {task_index + 1}: 'items' must be a list"
+    
+    # Validate sort_order if provided
+    sort_order = task_data.get('sort_order')
+    if sort_order is not None and not isinstance(sort_order, int):
+        return f"Task {task_index + 1}: 'sort_order' must be an integer"
     
     return None
 
@@ -794,14 +929,21 @@ async def batch_create_tasks(tasks: List[Dict[str, Any]]) -> str:
             - title (required): Task Name
             - project_id (required): ID of the project for the task
             - content (optional): Task description
-            - start_date (optional): Start date in user timezone (YYYY-MM-DDTHH:mm:ss or with timezone)
-            - due_date (optional): Due date in user timezone (YYYY-MM-DDTHH:mm:ss or with timezone)  
+            - desc (optional): Description of checklist
+            - start_date (optional): Start date in ISO format (YYYY-MM-DDTHH:mm:ss+0000)
+            - due_date (optional): Due date in ISO format (YYYY-MM-DDTHH:mm:ss+0000)
             - priority (optional): Priority level {0: "None", 1: "Low", 3: "Medium", 5: "High"}
+            - is_all_day (optional): Whether this is an all-day task (boolean)
+            - time_zone (optional): Time zone (e.g., "America/Los_Angeles")
+            - reminders (optional): List of reminder triggers (e.g., ["TRIGGER:P0DT9H0M0S"])
+            - repeat_flag (optional): Recurring rules (e.g., "RRULE:FREQ=DAILY;INTERVAL=1")
+            - sort_order (optional): Sort order value (integer)
+            - items (optional): List of subtask dictionaries
     
     Example:
         tasks = [
-            {"title": "Example A", "project_id": "1234ABC", "priority": 5},
-            {"title": "Example B", "project_id": "1234XYZ", "content": "Description", "start_date": "2025-07-18T10:00:00", "due_date": "2025-07-19T10:00:00"}
+            {"title": "Example A", "project_id": "1234ABC", "priority": 5, "is_all_day": True},
+            {"title": "Example B", "project_id": "1234XYZ", "content": "Description", "due_date": "2025-07-19T10:00:00+0000", "time_zone": "America/Los_Angeles"}
         ]
     """
     if not ticktick:
@@ -839,18 +981,32 @@ async def batch_create_tasks(tasks: List[Dict[str, Any]]) -> str:
                 title = task_data['title']
                 project_id = task_data['project_id']
                 content = task_data.get('content')
+                desc = task_data.get('desc')
                 start_date = task_data.get('start_date')
                 due_date = task_data.get('due_date')
                 priority = task_data.get('priority', 0)
+                is_all_day = task_data.get('is_all_day', False)
+                time_zone = task_data.get('time_zone')
+                reminders = task_data.get('reminders')
+                repeat_flag = task_data.get('repeat_flag')
+                sort_order = task_data.get('sort_order')
+                items = task_data.get('items')
                 
                 # Create the task
                 result = ticktick.create_task(
                     title=title,
                     project_id=project_id,
                     content=content,
+                    desc=desc,
                     start_date=start_date,
                     due_date=due_date,
-                    priority=priority
+                    priority=priority,
+                    is_all_day=is_all_day,
+                    time_zone=time_zone,
+                    reminders=reminders,
+                    repeat_flag=repeat_flag,
+                    sort_order=sort_order,
+                    items=items
                 )
                 
                 if 'error' in result:
