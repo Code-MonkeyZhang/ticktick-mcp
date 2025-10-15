@@ -9,7 +9,7 @@ import logging
 from mcp.server.fastmcp import FastMCP
 
 from ..config import ensure_client
-from ..utils.formatters import format_project
+from ..utils.formatters import format_project, format_task
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ def register_project_tools(mcp: FastMCP):
         Get all projects from TickTick.
         
         Note: This does not include the special "Inbox" project. 
-        To get inbox tasks, use query_tasks(project_id="inbox").
+        To get inbox information and tasks, use get_project_info(project_id="inbox").
         """
         try:
             ticktick = ensure_client()
@@ -45,23 +45,58 @@ def register_project_tools(mcp: FastMCP):
             return f"Error retrieving projects: {str(e)}"
 
     @mcp.tool()
-    async def get_project(project_id: str) -> str:
+    async def get_project_info(project_id: str) -> str:
         """
-        Get details about a specific project.
+        Get comprehensive information about a project, including its details and all tasks.
+        
+        This tool provides a complete view of a project in one call, showing both
+        the project metadata (name, color, view mode, etc.) and all tasks within it.
         
         Args:
-            project_id: ID of the project
+            project_id: ID of the project, or "inbox" to get inbox information
+        
+        Returns:
+            A formatted string containing:
+            - Project basic information (name, ID, color, etc.)
+            - List of all tasks in the project with their details
+        
+        Examples:
+            - get_project_info("abc123") → Get project info and tasks
+            - get_project_info("inbox") → Get inbox info and tasks
         """
         try:
             ticktick = ensure_client()
-            project = ticktick.get_project(project_id)
-            if 'error' in project:
-                return f"Error fetching project: {project['error']}"
+            project_data = ticktick.get_project_with_data(project_id)
+            if 'error' in project_data:
+                return f"Error fetching project data: {project_data['error']}"
             
-            return format_project(project)
+            project = project_data.get('project', {})
+            tasks = project_data.get('tasks', [])
+            project_name = project.get('name', project_id)
+            
+            # Format project information
+            result = "=" * 60 + "\n"
+            result += "📁 PROJECT INFORMATION\n"
+            result += "=" * 60 + "\n\n"
+            result += format_project(project)
+            result += "\n" + "=" * 60 + "\n"
+            result += f"📋 TASKS IN '{project_name}' ({len(tasks)} tasks)\n"
+            result += "=" * 60 + "\n\n"
+            
+            # Special message for empty projects
+            if project_id.lower() == "inbox" and not tasks:
+                result += "Your inbox is empty. 📭 Great job staying organized!\n"
+            elif not tasks:
+                result += f"No tasks found in this project.\n"
+            else:
+                # Format tasks
+                for i, task in enumerate(tasks, 1):
+                    result += f"Task {i}:\n" + format_task(task) + "\n"
+            
+            return result
         except Exception as e:
-            logger.error(f"Error in get_project: {e}")
-            return f"Error retrieving project: {str(e)}"
+            logger.error(f"Error in get_project_info: {e}")
+            return f"Error retrieving project information: {str(e)}"
 
     @mcp.tool()
     async def create_project(
