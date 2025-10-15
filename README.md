@@ -155,7 +155,7 @@ Once connected, you'll see the TickTick MCP server tools available in Claude, in
 | ------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `get_projects`      | List all your TickTick projects      | None                                                                                                                                     |
 | `get_project`       | Get details about a specific project | `project_id`                                                                                                                             |
-| `get_project_tasks` | List all tasks in a project          | `project_id`                                                                                                                             |
+| `get_project_tasks` | List all tasks in a project or inbox | `project_id` (use "inbox" for inbox tasks)                                                                                               |
 | `get_task`          | Get details about a specific task    | `project_id`, `task_id`                                                                                                                  |
 | `create_task`       | Create a new task                    | `title`, `project_id`, `content` (optional), `start_date` (optional), `due_date` (optional), `priority` (optional)                       |
 | `update_task`       | Update an existing task              | `task_id`, `project_id`, `title` (optional), `content` (optional), `start_date` (optional), `due_date` (optional), `priority` (optional) |
@@ -197,6 +197,7 @@ Here are some example prompts to use with Claude after connecting the TickTick M
 - "Show me all my TickTick projects"
 - "Create a new task called 'Finish MCP server documentation' in my work project with high priority"
 - "List all tasks in my personal project"
+- "Show me what's in my inbox"
 - "Mark the task 'Buy groceries' as complete"
 - "Create a new project called 'Vacation Planning' with a blue color"
 - "When is my next deadline in TickTick?"

@@ -430,7 +430,51 @@ python test/test_query_tools.py
 
 ---
 
+---
+
+## 🔧 工具进一步简化（2025-10-15）
+
+### 📋 合并 Inbox 功能
+
+**背景**：`get_inbox_tasks` 和 `get_project_tasks` 功能高度重叠，都是获取任务列表。
+
+**改进方案**：
+
+- 删除独立的 `get_inbox_tasks` 工具
+- 增强 `get_project_tasks`，支持特殊参数 `project_id="inbox"`
+
+**实现细节**：
+
+```python
+@mcp.tool()
+async def get_project_tasks(project_id: str) -> str:
+    """
+    Get all tasks in a specific project or inbox.
+
+    Args:
+        project_id: ID of the project, or "inbox" to get inbox tasks
+
+    Examples:
+        - get_project_tasks("abc123") → Get tasks from project
+        - get_project_tasks("inbox") → Get tasks from Inbox
+    """
+```
+
+**优化效果**：
+
+- 工具数量：19 → **18** 个（再减少 1 个）
+- API 更一致：使用统一的接口获取任务
+- 功能保持：Inbox 空时仍显示特殊消息 "📭 Great job staying organized!"
+
+**测试验证**：
+
+- ✅ 可以使用 "inbox" 获取收件箱任务
+- ✅ 大小写不敏感（"inbox" 和 "Inbox" 都可以）
+- ✅ 成功获取到 29 个 inbox 任务
+
+---
+
 _记录日期：2025-10-11（初始修复）_  
 _时区修复日期：2025-10-14_  
 _项目重构日期：2025-10-14_  
-_工具简化优化：2025-10-15_
+_工具简化优化：2025-10-15（日期查询合并 + Inbox 功能合并）_
