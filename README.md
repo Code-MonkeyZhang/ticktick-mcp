@@ -151,17 +151,28 @@ Once connected, you'll see the TickTick MCP server tools available in Claude, in
 
 ## Available MCP Tools
 
-| Tool                | Description                          | Parameters                                                                                                                               |
-| ------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `get_projects`      | List all your TickTick projects      | None                                                                                                                                     |
-| `get_project`       | Get details about a specific project | `project_id`                                                                                                                             |
-| `get_project_tasks` | List all tasks in a project or inbox | `project_id` (use "inbox" for inbox tasks)                                                                                               |
-| `create_task`       | Create a new task                    | `title`, `project_id`, `content` (optional), `start_date` (optional), `due_date` (optional), `priority` (optional)                       |
-| `update_task`       | Update an existing task              | `task_id`, `project_id`, `title` (optional), `content` (optional), `start_date` (optional), `due_date` (optional), `priority` (optional) |
-| `complete_task`     | Mark a task as complete              | `project_id`, `task_id`                                                                                                                  |
-| `delete_task`       | Delete a task                        | `project_id`, `task_id`                                                                                                                  |
-| `create_project`    | Create a new project                 | `name`, `color` (optional), `view_mode` (optional)                                                                                       |
-| `delete_project`    | Delete a project                     | `project_id`                                                                                                                             |
+### Project Management Tools
+
+| Tool               | Description                                               | Parameters                                         |
+| ------------------ | --------------------------------------------------------- | -------------------------------------------------- |
+| `get_all_projects` | List all your TickTick projects                           | None                                               |
+| `get_project_info` | Get comprehensive project information including all tasks | `project_id` (use "inbox" for inbox)               |
+| `create_project`   | Create a new project                                      | `name`, `color` (optional), `view_mode` (optional) |
+| `delete_projects`  | Delete one or more projects                               | `projects` (project ID string or list)             |
+
+> **Note**: `get_project_info` provides a complete view with both project details and all tasks in one call. For filtered task queries, use `query_tasks(project_id="...")` instead.
+
+### Task Management Tools (Batch Operations)
+
+All task operations support both **single task** and **batch processing**. You can pass either a single dictionary or a list of dictionaries.
+
+| Tool              | Description                        | Single Task Example                                                        | Batch Example                                                           |
+| ----------------- | ---------------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `create_tasks`    | Create one or more tasks           | `{"title": "Buy milk", "project_id": "123"}`                               | `[{"title": "Task 1", "project_id": "123"}, {"title": "Task 2", ...}]`  |
+| `update_tasks`    | Update one or more tasks           | `{"task_id": "abc", "project_id": "123", "priority": 5}`                   | `[{"task_id": "abc", "project_id": "123", "priority": 5}, ...]`         |
+| `complete_tasks`  | Mark one or more tasks as complete | `{"project_id": "123", "task_id": "abc"}`                                  | `[{"project_id": "123", "task_id": "abc"}, {"project_id": "123", ...}]` |
+| `delete_tasks`    | Delete one or more tasks           | `{"project_id": "123", "task_id": "abc"}`                                  | `[{"project_id": "123", "task_id": "abc"}, ...]`                        |
+| `create_subtasks` | Create one or more subtasks        | `{"subtask_title": "Sub 1", "parent_task_id": "abc", "project_id": "123"}` | `[{"subtask_title": "Sub 1", "parent_task_id": "abc", ...}, ...]`       |
 
 ## Task-specific MCP Tools
 
@@ -176,20 +187,17 @@ Once connected, you'll see the TickTick MCP server tools available in Claude, in
 
 ```python
 query_tasks()                                         # All tasks
-query_tasks(task_id="abc123", project_id="xyz789")    # Get specific task (replaces get_task)
+query_tasks(task_id="abc123", project_id="xyz789")    # Get specific task (direct lookup)
 query_tasks(task_id="abc123")                         # Find task by ID across all projects
+query_tasks(project_id="inbox")                       # All inbox tasks
+query_tasks(project_id="xyz789")                      # All tasks in a project
 query_tasks(date_filter="today")                      # Tasks due today
 query_tasks(priority=5)                               # High priority tasks
 query_tasks(date_filter="today", priority=5)          # High priority tasks due today
 query_tasks(search_term="meeting")                    # Tasks with "meeting"
-query_tasks(project_id="inbox")                       # Inbox tasks only
+query_tasks(project_id="inbox", priority=5)           # High priority inbox tasks
+query_tasks(date_filter="overdue", priority=5)        # High priority overdue tasks
 ```
-
-### Batch Operations
-
-| Tool                 | Description                   | Parameters                          |
-| -------------------- | ----------------------------- | ----------------------------------- |
-| `batch_create_tasks` | Create multiple tasks at once | `tasks` (list of task dictionaries) |
 
 ## Example Prompts for Claude
 
@@ -198,12 +206,22 @@ Here are some example prompts to use with Claude after connecting the TickTick M
 ### General
 
 - "Show me all my TickTick projects"
+- "Show me everything about my Work project" (uses `get_project_info`)
+- "What's in my inbox?" (uses `get_project_info` with inbox)
 - "Create a new task called 'Finish MCP server documentation' in my work project with high priority"
-- "List all tasks in my personal project"
-- "Show me what's in my inbox"
 - "Mark the task 'Buy groceries' as complete"
 - "Create a new project called 'Vacation Planning' with a blue color"
 - "When is my next deadline in TickTick?"
+
+### Batch Operations
+
+All task operations now support batch processing:
+
+- "Create these three tasks: 'Buy groceries', 'Call mom', and 'Finish report' in my inbox"
+- "Mark these five tasks as complete: [list of task IDs]"
+- "Delete all tasks with 'old' in the title from my archive project"
+- "Update the priority of all tasks due today to high priority"
+- "Create 10 subtasks for this project plan"
 
 ### Task Filtering Queries
 
@@ -223,6 +241,12 @@ With the unified `query_tasks` tool, you can combine multiple filters:
 The project includes comprehensive tests to verify functionality:
 
 ```bash
+# Run comprehensive test for all 10 tools (recommended)
+python test/test_all_tools.py
+
+# Run batch operations tests (for all batch task tools)
+python test/test_batch_operations.py
+
 # Run API functionality tests
 python test/test_api_functions.py
 
@@ -232,6 +256,29 @@ python test/test_query_tools.py
 # Run refactoring validation tests
 python test/test_refactor_validation.py
 ```
+
+### Test Coverage
+
+The `test_all_tools.py` script provides comprehensive testing for all current tools:
+
+**Project Management Tools (4 tools)**:
+
+- ✅ `get_all_projects` - List all projects
+- ✅ `get_project_info` - Get project info with tasks
+- ✅ `create_project` - Create new project
+- ✅ `delete_projects` - Delete single/batch projects
+
+**Task Management Tools (5 tools)**:
+
+- ✅ `create_tasks` - Create single/batch tasks
+- ✅ `update_tasks` - Update single/batch tasks
+- ✅ `complete_tasks` - Complete single/batch tasks
+- ✅ `delete_tasks` - Delete single/batch tasks
+- ✅ `create_subtasks` - Create single/batch subtasks
+
+**Query Tools (1 tool)**:
+
+- ✅ `query_tasks` - Unified query with filters
 
 ## Development
 
