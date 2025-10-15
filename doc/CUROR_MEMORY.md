@@ -323,6 +323,114 @@ ticktick_mcp/src/
 
 ---
 
+---
+
+## 🔄 工具简化优化（2025-10-15）
+
+### 📋 优化目标
+
+原有的 23 个 MCP 工具对 LLM 来说过于复杂，特别是日期查询工具有 5 个功能高度重叠的工具，增加了 LLM 的选择负担和 token 消耗。
+
+### 🎯 实施方案
+
+**合并日期查询工具（5 → 1）**
+
+原有工具：
+
+- `get_tasks_due_today()` - 获取今天到期的任务
+- `get_tasks_due_tomorrow()` - 获取明天到期的任务
+- `get_tasks_due_in_days(days)` - 获取指定天数后到期的任务
+- `get_tasks_due_this_week()` - 获取本周内到期的任务
+- `get_overdue_tasks()` - 获取过期任务
+
+合并为：
+
+```python
+@mcp.tool()
+async def query_tasks_by_date(
+    date_filter: str,
+    custom_days: int = None
+) -> str:
+    """
+    Query tasks by date/deadline criteria.
+
+    Args:
+        date_filter: "today", "tomorrow", "overdue", "next_7_days", "custom"
+        custom_days: Number of days (only for "custom" filter)
+    """
+```
+
+### ✅ 优化效果
+
+1. **工具数量减少**：23 → 19 个工具（减少 17%）
+2. **更清晰的语义**：使用枚举值而非多个函数名
+3. **降低选择复杂度**：LLM 只需选择一个工具，然后传入不同参数
+4. **减少 prompt 长度**：5 段工具描述合并为 1 段，大幅减少 token 消耗
+5. **保持功能完整**：所有原有功能通过参数组合实现
+
+### 📊 使用示例
+
+```python
+# 今天到期
+query_tasks_by_date("today")
+
+# 明天到期
+query_tasks_by_date("tomorrow")
+
+# 过期任务
+query_tasks_by_date("overdue")
+
+# 未来 7 天
+query_tasks_by_date("next_7_days")
+
+# 自定义天数（如 3 天后）
+query_tasks_by_date("custom", 3)
+```
+
+### 🔧 技术实现
+
+- 保持底层验证逻辑不变（`is_task_due_today`, `is_task_overdue`, `is_task_due_in_days`）
+- 通过参数路由到相应的过滤函数
+- 添加参数验证确保正确使用
+- 保持时区敏感的日期比较逻辑
+
+### 📝 修改的文件
+
+- `ticktick_mcp/src/tools/query_tools.py` - 合并日期查询工具
+- `README.md` - 更新工具文档和示例
+- `doc/CUROR_MEMORY.md` - 记录优化过程
+- `test/test_query_tools.py` - 新增专门测试文件验证新工具功能
+
+### ✅ 测试结果
+
+创建了专门的测试文件 `test/test_query_tools.py` 来验证新工具：
+
+```bash
+python test/test_query_tools.py
+```
+
+测试覆盖：
+
+1. ✅ 工具注册验证
+2. ✅ 测试环境设置（创建不同截止日期的测试任务）
+3. ✅ 验证逻辑测试（`is_task_due_today`, `is_task_overdue`, `is_task_due_in_days`）
+4. ✅ 参数验证测试（有效和无效的 `date_filter` 值）
+5. ✅ 自动清理测试数据
+
+**测试结果**: 4/4 通过 ✅
+
+### 💡 设计原则
+
+1. **对 LLM 友好**：减少选择困难，降低认知负担
+2. **保持简洁**：常用场景用简单参数，复杂场景用 custom 选项
+3. **向后兼容**：底层逻辑不变，只是接口优化
+4. **易于扩展**：新增日期过滤类型只需添加新的 date_filter 选项
+
+这次优化是为 MCP 工具 LLM 友好化的第一步，未来可以考虑进一步简化优先级查询工具等。
+
+---
+
 _记录日期：2025-10-11（初始修复）_  
 _时区修复日期：2025-10-14_  
-_项目重构日期：2025-10-14_
+_项目重构日期：2025-10-14_  
+_工具简化优化：2025-10-15_
