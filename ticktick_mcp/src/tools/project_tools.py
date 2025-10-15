@@ -6,6 +6,7 @@ including creating, reading, updating, and deleting projects.
 """
 
 import logging
+from typing import Union, List
 from mcp.server.fastmcp import FastMCP
 
 from ..config import ensure_client
@@ -133,20 +134,91 @@ def register_project_tools(mcp: FastMCP):
             return f"Error creating project: {str(e)}"
 
     @mcp.tool()
-    async def delete_project(project_id: str) -> str:
+    async def delete_projects(projects: Union[str, List[str]]) -> str:
         """
-        Delete a project.
+        Delete one or more projects.
+        
+        Supports both single project and batch deletion. For single project, you can pass
+        a project ID string directly. For multiple projects, pass a list of project IDs.
         
         Args:
-            project_id: ID of the project
+            projects: Project ID string or list of project ID strings
+        
+        Examples:
+            # Single project
+            "abc123"
+            
+            # Multiple projects
+            ["abc123", "def456", "ghi789"]
         """
+        # Normalize input - convert single string to list
+        if isinstance(projects, str):
+            project_list = [projects]
+            single_project = True
+        elif isinstance(projects, list):
+            project_list = projects
+            single_project = False
+        else:
+            return "Invalid input. Projects must be a string or list of strings."
+        
+        if not project_list:
+            return "No projects provided. Please provide at least one project to delete."
+        
+        # Validate all projects are strings
+        validation_errors = []
+        for i, project_id in enumerate(project_list):
+            if not isinstance(project_id, str):
+                validation_errors.append(f"Project {i + 1}: Must be a string (project ID)")
+                continue
+            
+            if not project_id.strip():
+                validation_errors.append(f"Project {i + 1}: Project ID cannot be empty")
+        
+        if validation_errors:
+            return "Validation errors found:\n" + "\n".join(validation_errors)
+        
+        # Delete projects one by one and collect results
+        deleted_projects = []
+        failed_projects = []
+        
         try:
             ticktick = ensure_client()
-            result = ticktick.delete_project(project_id)
-            if 'error' in result:
-                return f"Error deleting project: {result['error']}"
+            for i, project_id in enumerate(project_list):
+                try:
+                    result = ticktick.delete_project(project_id)
+                    
+                    if 'error' in result:
+                        failed_projects.append(f"Project {i + 1} (ID: {project_id}): {result['error']}")
+                    else:
+                        deleted_projects.append((i + 1, project_id))
+                        
+                except Exception as e:
+                    failed_projects.append(f"Project {i + 1} (ID: {project_id}): {str(e)}")
             
-            return f"Project {project_id} deleted successfully."
+            # Format the results
+            if single_project:
+                if deleted_projects:
+                    return f"Project {deleted_projects[0][1]} deleted successfully."
+                else:
+                    return f"Failed to delete project:\n{failed_projects[0]}"
+            else:
+                result_message = f"Batch project deletion completed.\n\n"
+                result_message += f"Successfully deleted: {len(deleted_projects)} projects\n"
+                result_message += f"Failed: {len(failed_projects)} projects\n\n"
+                
+                if deleted_projects:
+                    result_message += "✅ Successfully Deleted Projects:\n"
+                    for project_num, project_id in deleted_projects:
+                        result_message += f"{project_num}. Project ID: {project_id}\n"
+                    result_message += "\n"
+                
+                if failed_projects:
+                    result_message += "❌ Failed Projects:\n"
+                    for error in failed_projects:
+                        result_message += f"{error}\n"
+                
+                return result_message
+            
         except Exception as e:
-            logger.error(f"Error in delete_project: {e}")
-            return f"Error deleting project: {str(e)}"
+            logger.error(f"Error in delete_projects: {e}")
+            return f"Error during project deletion: {str(e)}"
