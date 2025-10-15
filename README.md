@@ -166,27 +166,30 @@ Once connected, you'll see the TickTick MCP server tools available in Claude, in
 
 ## Task-specific MCP Tools
 
-### Task Retrieval & Search
+### Unified Query Tool
 
-| Tool                    | Description                                 | Parameters                                          |
-| ----------------------- | ------------------------------------------- | --------------------------------------------------- |
-| `get_all_tasks`         | Get all tasks from all projects             | None                                                |
-| `get_tasks_by_priority` | Get tasks filtered by priority level        | `priority_id` (0: None, 1: Low, 3: Medium, 5: High) |
-| `search_tasks`          | Search tasks by title, content, or subtasks | `search_term`                                       |
+| Tool          | Description                                       | Parameters                                                                                                                                                                                                         |
+| ------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `query_tasks` | Unified task query with multi-dimensional filters | `date_filter` (optional), `custom_days` (optional), `priority` (optional), `search_term` (optional), `project_id` (optional), `include_all_projects` (default: True)                                               |
+|               | **Supports flexible filtering and combinations:** | - Date filters: "today", "tomorrow", "overdue", "next_7_days", "custom", "engaged", "next"<br>- Priority: 0 (None), 1 (Low), 3 (Medium), 5 (High)<br>- Search by keyword<br>- Limit to specific project or "inbox" |
 
-### Date-Based Task Retrieval
+**Examples:**
 
-| Tool                  | Description                           | Parameters                                                                                                             |
-| --------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `query_tasks_by_date` | Query tasks by date/deadline criteria | `date_filter` ("today", "tomorrow", "overdue", "next_7_days", "custom"), `custom_days` (optional, for "custom" filter) |
+```python
+query_tasks()                                    # All tasks
+query_tasks(date_filter="today")                 # Tasks due today
+query_tasks(priority=5)                          # High priority tasks
+query_tasks(date_filter="today", priority=5)     # High priority tasks due today
+query_tasks(search_term="meeting")               # Tasks with "meeting"
+query_tasks(date_filter="engaged")               # GTD: Engaged tasks
+query_tasks(project_id="inbox")                  # Inbox tasks only
+```
 
-### Getting Things Done (GTD) Framework
+### Batch Operations
 
-| Tool                 | Description                                        | Parameters                          |
-| -------------------- | -------------------------------------------------- | ----------------------------------- |
-| `get_engaged_tasks`  | Get "engaged" tasks (high priority or overdue)     | None                                |
-| `get_next_tasks`     | Get "next" tasks (medium priority or due tomorrow) | None                                |
-| `batch_create_tasks` | Create multiple tasks at once                      | `tasks` (list of task dictionaries) |
+| Tool                 | Description                   | Parameters                          |
+| -------------------- | ----------------------------- | ----------------------------------- |
+| `batch_create_tasks` | Create multiple tasks at once | `tasks` (list of task dictionaries) |
 
 ## Example Prompts for Claude
 
@@ -204,14 +207,16 @@ Here are some example prompts to use with Claude after connecting the TickTick M
 
 ### Task Filtering Queries
 
+With the unified `query_tasks` tool, you can combine multiple filters:
+
 - "What tasks do I have due today?"
 - "Show me everything that's overdue"
 - "Show me all tasks due this week"
-- "What tasks are due tomorrow?"
-- "Show me tasks due in 3 days"
-- "Search for tasks about 'project alpha'"
-- "Show me all tasks with 'client' in the title or description"
-- "Show me all my high priority tasks"
+- "Show me high priority tasks due today"
+- "Find tasks with 'meeting' that are due tomorrow"
+- "Show me all high priority tasks"
+- "What tasks in my inbox are due this week?"
+- "Search for 'project alpha' in high priority tasks"
 
 ### GTD Workflow
 
