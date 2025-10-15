@@ -156,7 +156,6 @@ Once connected, you'll see the TickTick MCP server tools available in Claude, in
 | `get_projects`      | List all your TickTick projects      | None                                                                                                                                     |
 | `get_project`       | Get details about a specific project | `project_id`                                                                                                                             |
 | `get_project_tasks` | List all tasks in a project or inbox | `project_id` (use "inbox" for inbox tasks)                                                                                               |
-| `get_task`          | Get details about a specific task    | `project_id`, `task_id`                                                                                                                  |
 | `create_task`       | Create a new task                    | `title`, `project_id`, `content` (optional), `start_date` (optional), `due_date` (optional), `priority` (optional)                       |
 | `update_task`       | Update an existing task              | `task_id`, `project_id`, `title` (optional), `content` (optional), `start_date` (optional), `due_date` (optional), `priority` (optional) |
 | `complete_task`     | Mark a task as complete              | `project_id`, `task_id`                                                                                                                  |
@@ -168,21 +167,22 @@ Once connected, you'll see the TickTick MCP server tools available in Claude, in
 
 ### Unified Query Tool
 
-| Tool          | Description                                       | Parameters                                                                                                                                                                                                         |
-| ------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `query_tasks` | Unified task query with multi-dimensional filters | `date_filter` (optional), `custom_days` (optional), `priority` (optional), `search_term` (optional), `project_id` (optional), `include_all_projects` (default: True)                                               |
-|               | **Supports flexible filtering and combinations:** | - Date filters: "today", "tomorrow", "overdue", "next_7_days", "custom", "engaged", "next"<br>- Priority: 0 (None), 1 (Low), 3 (Medium), 5 (High)<br>- Search by keyword<br>- Limit to specific project or "inbox" |
+| Tool          | Description                                       | Parameters                                                                                                                                                                                                                                                                           |
+| ------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `query_tasks` | Unified task query with multi-dimensional filters | `task_id` (optional), `date_filter` (optional), `custom_days` (optional), `priority` (optional), `search_term` (optional), `project_id` (optional), `include_all_projects` (default: True)                                                                                           |
+|               | **Supports flexible filtering and combinations:** | - Direct lookup: Use `task_id` + `project_id` for efficient single task retrieval<br>- Date filters: "today", "tomorrow", "overdue", "next_7_days", "custom"<br>- Priority: 0 (None), 1 (Low), 3 (Medium), 5 (High)<br>- Search by keyword<br>- Limit to specific project or "inbox" |
 
 **Examples:**
 
 ```python
-query_tasks()                                    # All tasks
-query_tasks(date_filter="today")                 # Tasks due today
-query_tasks(priority=5)                          # High priority tasks
-query_tasks(date_filter="today", priority=5)     # High priority tasks due today
-query_tasks(search_term="meeting")               # Tasks with "meeting"
-query_tasks(date_filter="engaged")               # GTD: Engaged tasks
-query_tasks(project_id="inbox")                  # Inbox tasks only
+query_tasks()                                         # All tasks
+query_tasks(task_id="abc123", project_id="xyz789")    # Get specific task (replaces get_task)
+query_tasks(task_id="abc123")                         # Find task by ID across all projects
+query_tasks(date_filter="today")                      # Tasks due today
+query_tasks(priority=5)                               # High priority tasks
+query_tasks(date_filter="today", priority=5)          # High priority tasks due today
+query_tasks(search_term="meeting")                    # Tasks with "meeting"
+query_tasks(project_id="inbox")                       # Inbox tasks only
 ```
 
 ### Batch Operations
@@ -217,20 +217,6 @@ With the unified `query_tasks` tool, you can combine multiple filters:
 - "Show me all high priority tasks"
 - "What tasks in my inbox are due this week?"
 - "Search for 'project alpha' in high priority tasks"
-
-### GTD Workflow
-
-Following David Allen's "Getting Things Done" framework, manage an Engaged and Next actions.
-
-- Engaged will retrieve tasks of high priority, due today or overdue.
-- Next will retrieve medium priority or due tomorrow.
-- Break down complex actions into smaller actions with batch_creation
-
-For example:
-
-- "Time block the rest of my day from 2-8pm with items from my engaged list"
-- "Walk me through my next actions and help my identify what I should focus on tomorrow?"
-- "Break down this project into 5 smaller actionable tasks"
 
 ## Testing
 

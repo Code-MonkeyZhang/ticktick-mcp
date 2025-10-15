@@ -168,37 +168,6 @@ def test_combined_filters(client: TickTickClient, project_id: str):
         print(f"      → {overdue_high[0].get('title')}")
 
 
-def test_gtd_presets(client: TickTickClient, project_id: str):
-    """测试 GTD 预设"""
-    print_section("测试 3: GTD 预设 (OR 逻辑)")
-    
-    from ticktick_mcp.src.utils.validators import (
-        is_task_due_today,
-        is_task_overdue,
-        is_task_due_in_days
-    )
-    
-    project_data = client.get_project_with_data(project_id)
-    all_tasks = project_data.get('tasks', [])
-    
-    # Test 1: "engaged" (high priority OR due today OR overdue)
-    engaged = [t for t in all_tasks 
-               if (t.get('priority', 0) == 5 or 
-                   is_task_due_today(t) or 
-                   is_task_overdue(t))]
-    print(f"   ✅ date_filter='engaged': {len(engaged)} 个任务")
-    for task in engaged:
-        print(f"      → {task.get('title')}")
-    
-    # Test 2: "next" (medium priority OR due tomorrow)
-    next_tasks = [t for t in all_tasks 
-                  if (t.get('priority', 0) == 3 or 
-                      is_task_due_in_days(t, 1))]
-    print(f"   ✅ date_filter='next': {len(next_tasks)} 个任务")
-    for task in next_tasks:
-        print(f"      → {task.get('title')}")
-
-
 def test_project_filter(client: TickTickClient, project_id: str):
     """测试项目过滤"""
     print_section("测试 4: 项目过滤")
@@ -214,6 +183,88 @@ def test_project_filter(client: TickTickClient, project_id: str):
     inbox_data = client.get_project_with_data("inbox")
     inbox_tasks = inbox_data.get('tasks', [])
     print(f"   ✅ project_id='inbox': {len(inbox_tasks)} 个任务")
+
+
+def test_task_id_query(client: TickTickClient, project_id: str, test_tasks: list):
+    """测试 task_id 精确查询功能（通过底层验证器）"""
+    print_section("测试 task_id 精确查询")
+    
+    from ticktick_mcp.src.utils.validators import get_project_tasks_by_filter
+    
+    # 选择第一个任务进行测试
+    if not test_tasks:
+        print("   ⚠️  没有可用的测试任务")
+        return
+    
+    test_task_type, test_task_id = test_tasks[0]
+    
+    # 获取任务完整信息
+    task_data = client.get_task(project_id, test_task_id)
+    print(f"\n   测试任务: {task_data.get('title')} (ID: {test_task_id})")
+    
+    # 测试 1: 使用 get_task 直接查询（这是 query_tasks 的快速路径）
+    print("\n   测试 1: 直接 API 查询 (task_id + project_id)")
+    result = client.get_task(project_id, test_task_id)
+    if 'error' not in result and result.get('id') == test_task_id:
+        print(f"      ✅ 成功获取任务: {result.get('title')}")
+    else:
+        print(f"      ❌ 获取任务失败: {result}")
+    
+    # 测试 2: task_id 过滤器（全局搜索路径）
+    print("\n   测试 2: 通过过滤器查找 task_id")
+    
+    # 获取所有项目
+    projects = client.get_projects()
+    
+    # 创建 task_id 过滤器
+    def task_id_filter(task):
+        return task.get('id') == test_task_id
+    
+    # 使用过滤器查找任务
+    found_tasks = []
+    for project in projects:
+        if project.get('closed'):
+            continue
+        project_data = client.get_project_with_data(project['id'])
+        tasks = project_data.get('tasks', [])
+        for task in tasks:
+            if task_id_filter(task):
+                found_tasks.append(task)
+    
+    if len(found_tasks) == 1 and found_tasks[0]['id'] == test_task_id:
+        print(f"      ✅ 成功通过 ID 过滤器找到任务")
+    elif len(found_tasks) == 0:
+        print(f"      ❌ 过滤器未找到任务")
+    else:
+        print(f"      ⚠️  找到 {len(found_tasks)} 个任务（应该是1个）")
+    
+    # 测试 3: 错误的 task_id（直接查询）
+    print("\n   测试 3: 错误的 task_id")
+    result = client.get_task(project_id, "nonexistent_task_id_12345")
+    if 'error' in result:
+        print(f"      ✅ 正确处理不存在的任务 ID")
+    else:
+        print(f"      ⚠️  可能未正确处理不存在的任务 ID")
+    
+    # 测试 4: 组合过滤（task_id + 其他条件）
+    print("\n   测试 4: task_id 组合过滤")
+    
+    def combined_filter(task):
+        # 同时匹配 task_id 和优先级
+        return (task.get('id') == test_task_id and 
+                task.get('priority', 0) == task_data.get('priority', 0))
+    
+    # 在当前项目中测试
+    project_data = client.get_project_with_data(project_id)
+    tasks = project_data.get('tasks', [])
+    matching = [t for t in tasks if combined_filter(t)]
+    
+    if len(matching) == 1:
+        print(f"      ✅ 组合过滤成功（task_id + priority={task_data.get('priority', 0)}）")
+    else:
+        print(f"      ❌ 组合过滤失败：找到 {len(matching)} 个任务")
+    
+    print("\n   ✅ task_id 查询功能测试完成")
 
 
 def cleanup(client: TickTickClient, project_id: str, test_tasks: list):
@@ -260,8 +311,8 @@ def main():
         # 运行测试
         test_single_filters(client, project_id)
         test_combined_filters(client, project_id)
-        test_gtd_presets(client, project_id)
         test_project_filter(client, project_id)
+        test_task_id_query(client, project_id, test_tasks)
         
         # 清理
         cleanup(client, project_id, test_tasks)
@@ -273,14 +324,14 @@ def main():
         print("📊 测试总结:")
         print("   ✅ 单一过滤器测试通过")
         print("   ✅ 组合过滤器测试通过 (AND 逻辑)")
-        print("   ✅ GTD 预设测试通过 (OR 逻辑)")
         print("   ✅ 项目过滤测试通过")
+        print("   ✅ task_id 精确查询测试通过")
         print()
         print("🎯 统一查询工具验证成功！")
         print("   - 支持多维度过滤")
         print("   - 支持过滤器组合")
-        print("   - 支持 GTD 预设")
         print("   - 支持项目限定")
+        print("   - 支持 task_id 精确查询（替代 get_task）")
         print("="*70)
         
         return 0

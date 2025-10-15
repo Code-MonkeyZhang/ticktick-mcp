@@ -27,6 +27,7 @@ def register_query_tools(mcp: FastMCP):
     
     @mcp.tool()
     async def query_tasks(
+        task_id: Optional[str] = None,
         date_filter: Optional[str] = None,
         custom_days: Optional[int] = None,
         priority: Optional[int] = None,
@@ -41,14 +42,15 @@ def register_query_tools(mcp: FastMCP):
         Multiple filters can be combined - tasks must match ALL specified criteria (AND logic).
         
         Args:
+            task_id: Get a specific task by ID. When combined with project_id, uses direct API 
+                    call (most efficient). When used alone, searches all tasks for matching ID.
+                    Can be combined with other filters to verify task properties.
             date_filter: Filter by date - one of:
                 - "today": Tasks due today
                 - "tomorrow": Tasks due tomorrow
                 - "overdue": Overdue tasks
                 - "next_7_days": Tasks due within the next 7 days
                 - "custom": Tasks due in a specific number of days (requires custom_days)
-                - "engaged": High priority OR due today OR overdue (GTD preset)
-                - "next": Medium priority OR due tomorrow (GTD preset)
             custom_days: Number of days from today (only for date_filter="custom")
                         e.g., 0 for today, 1 for tomorrow, 3 for 3 days from now
             priority: Filter by priority level
@@ -57,26 +59,27 @@ def register_query_tools(mcp: FastMCP):
                 - 3: Medium
                 - 5: High
             search_term: Search keyword in title, content, or subtask titles (case-insensitive)
-            project_id: Limit search to specific project (use "inbox" for inbox tasks)
+            project_id: Limit search to specific project (use "inbox" for inbox tasks).
+                       When combined with task_id, enables direct API lookup.
             include_all_projects: If True, search all projects; if False and project_id not set, 
                                  returns error (default: True)
         
         Examples:
-            query_tasks()                                    → All tasks
-            query_tasks(date_filter="today")                 → Tasks due today
-            query_tasks(priority=5)                          → High priority tasks
-            query_tasks(date_filter="today", priority=5)     → High priority tasks due today
-            query_tasks(search_term="meeting")               → Tasks containing "meeting"
-            query_tasks(date_filter="next_7_days", priority=3)  → Medium priority, next 7 days
-            query_tasks(project_id="inbox")                  → All inbox tasks
-            query_tasks(date_filter="engaged")               → Engaged tasks (GTD)
-            query_tasks(date_filter="next")                  → Next tasks (GTD)
-            query_tasks(search_term="bug", priority=5)       → High priority bugs
+            query_tasks()                                         → All tasks
+            query_tasks(task_id="abc123", project_id="xyz789")    → Get specific task (direct lookup)
+            query_tasks(task_id="abc123")                         → Find task by ID across all projects
+            query_tasks(date_filter="today")                      → Tasks due today
+            query_tasks(priority=5)                               → High priority tasks
+            query_tasks(date_filter="today", priority=5)          → High priority tasks due today
+            query_tasks(search_term="meeting")                    → Tasks containing "meeting"
+            query_tasks(date_filter="next_7_days", priority=3)    → Medium priority, next 7 days
+            query_tasks(project_id="inbox")                       → All inbox tasks
+            query_tasks(search_term="bug", priority=5)            → High priority bugs
         
         Notes:
             - Ignores closed projects
             - When combining filters, tasks must match ALL criteria
-            - GTD presets ("engaged", "next") use OR logic internally but can combine with other filters
+            - Direct task lookup (task_id + project_id) is the most efficient query method
         """
         try:
             # Validate priority if provided
@@ -84,7 +87,7 @@ def register_query_tools(mcp: FastMCP):
                 return "Invalid priority. Must be 0 (None), 1 (Low), 3 (Medium), or 5 (High)."
             
             # Validate date_filter if provided
-            valid_date_filters = ["today", "tomorrow", "overdue", "next_7_days", "custom", "engaged", "next"]
+            valid_date_filters = ["today", "tomorrow", "overdue", "next_7_days", "custom"]
             if date_filter is not None and date_filter not in valid_date_filters:
                 return f"Invalid date_filter. Must be one of: {', '.join(valid_date_filters)}"
             
@@ -99,8 +102,70 @@ def register_query_tools(mcp: FastMCP):
             if search_term is not None and not search_term.strip():
                 return "Search term cannot be empty."
             
-            # Get client and projects
+            # Get client
             ticktick = ensure_client()
+            
+            # Fast path: Direct task lookup when both task_id and project_id are provided
+            if task_id and project_id:
+                task = ticktick.get_task(project_id, task_id)
+                if 'error' in task:
+                    return f"Error fetching task: {task['error']}"
+                
+                # Apply additional filters if specified
+                from ..utils.formatters import format_task
+                
+                # Build filter function for the single task
+                def single_task_filter(t: Dict[str, Any]) -> bool:
+                    # Date filter
+                    if date_filter == "today":
+                        if not is_task_due_today(t):
+                            return False
+                    elif date_filter == "tomorrow":
+                        if not is_task_due_in_days(t, 1):
+                            return False
+                    elif date_filter == "overdue":
+                        if not is_task_overdue(t):
+                            return False
+                    elif date_filter == "next_7_days":
+                        week_match = False
+                        for day in range(7):
+                            if is_task_due_in_days(t, day):
+                                week_match = True
+                                break
+                        if not week_match:
+                            return False
+                    elif date_filter == "custom":
+                        if not is_task_due_in_days(t, custom_days):
+                            return False
+                    
+                    # Priority filter
+                    if priority is not None:
+                        if t.get('priority', 0) != priority:
+                            return False
+                    
+                    # Search filter
+                    if search_term is not None:
+                        if not task_matches_search(t, search_term):
+                            return False
+                    
+                    return True
+                
+                # Check if task passes all filters
+                if not single_task_filter(task):
+                    # Build description of what was filtered
+                    filter_parts = []
+                    if date_filter:
+                        filter_parts.append(f"date_filter={date_filter}")
+                    if priority is not None:
+                        filter_parts.append(f"priority={priority}")
+                    if search_term:
+                        filter_parts.append(f"search_term='{search_term}'")
+                    filters_desc = ", ".join(filter_parts)
+                    return f"Task {task_id} found but does not match the specified filters ({filters_desc})."
+                
+                return format_task(task)
+            
+            # Get projects for general search
             
             # If project_id is specified, get only that project's tasks
             if project_id:
@@ -121,19 +186,13 @@ def register_query_tools(mcp: FastMCP):
             
             # Build combined filter function
             def combined_filter(task: Dict[str, Any]) -> bool:
-                # Date filter (special handling for GTD presets)
-                if date_filter == "engaged":
-                    # Engaged: High priority OR due today OR overdue (OR logic)
-                    if not (task.get('priority', 0) == 5 or 
-                           is_task_due_today(task) or 
-                           is_task_overdue(task)):
+                # Task ID filter (exact match)
+                if task_id is not None:
+                    if task.get('id') != task_id:
                         return False
-                elif date_filter == "next":
-                    # Next: Medium priority OR due tomorrow (OR logic)
-                    if not (task.get('priority', 0) == 3 or 
-                           is_task_due_in_days(task, 1)):
-                        return False
-                elif date_filter == "today":
+                
+                # Date filter
+                if date_filter == "today":
                     if not is_task_due_today(task):
                         return False
                 elif date_filter == "tomorrow":
@@ -170,11 +229,10 @@ def register_query_tools(mcp: FastMCP):
             
             # Build description
             filter_descriptions = []
-            if date_filter == "engaged":
-                filter_descriptions.append("engaged (high priority, due today, or overdue)")
-            elif date_filter == "next":
-                filter_descriptions.append("next (medium priority or due tomorrow)")
-            elif date_filter == "today":
+            if task_id is not None:
+                filter_descriptions.append(f"task ID '{task_id}'")
+            
+            if date_filter == "today":
                 filter_descriptions.append("due today")
             elif date_filter == "tomorrow":
                 filter_descriptions.append("due tomorrow")

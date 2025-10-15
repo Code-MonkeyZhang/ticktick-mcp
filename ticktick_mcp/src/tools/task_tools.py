@@ -23,26 +23,6 @@ def register_task_tools(mcp: FastMCP):
     """Register all task-related MCP tools."""
     
     @mcp.tool()
-    async def get_task(project_id: str, task_id: str) -> str:
-        """
-        Get details about a specific task.
-        
-        Args:
-            project_id: ID of the project
-            task_id: ID of the task
-        """
-        try:
-            ticktick = ensure_client()
-            task = ticktick.get_task(project_id, task_id)
-            if 'error' in task:
-                return f"Error fetching task: {task['error']}"
-            
-            return format_task(task)
-        except Exception as e:
-            logger.error(f"Error in get_task: {e}")
-            return f"Error retrieving task: {str(e)}"
-
-    @mcp.tool()
     async def create_task(
         title: str, 
         project_id: str, 
