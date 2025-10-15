@@ -181,7 +181,7 @@ def test_client_initialization():
         
         # 检查客户端是否有必要的方法
         required_methods = [
-            'get_projects', 'create_project', 'get_project',
+            'get_all_projects', 'create_project', 'get_project',
             'create_task', 'update_task', 'delete_task',
             'get_task', 'complete_task'
         ]

@@ -179,7 +179,7 @@ def register_query_tools(mcp: FastMCP):
                 all_tasks = project_data.get('tasks', [])
             else:
                 # Get all projects
-                projects = ticktick.get_projects()
+                projects = ticktick.get_all_projects()
                 if 'error' in projects:
                     return f"Error fetching projects: {projects['error']}"
                 all_tasks = None  # Will be fetched by get_project_tasks_by_filter

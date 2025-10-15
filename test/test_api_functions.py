@@ -74,10 +74,10 @@ def print_section(title: str):
     print("="*60)
 
 
-def test_get_projects(client: TickTickClient, results: TestResults):
+def test_get_all_projects(client: TickTickClient, results: TestResults):
     """测试获取项目列表"""
     try:
-        projects = client.get_projects()
+        projects = client.get_all_projects()
         
         if 'error' in projects:
             results.record_fail("获取项目列表", projects['error'])
@@ -585,7 +585,7 @@ def main():
     
     # 项目管理测试
     print_section("1. 项目管理测试")
-    test_get_projects(client, results)
+    test_get_all_projects(client, results)
     test_create_project(client, results)
     test_get_project(client, results)
     

@@ -27,7 +27,7 @@ def setup_test_environment(client: TickTickClient):
     print("🔧 设置测试环境...")
     
     # 查找或创建测试项目
-    projects = client.get_projects()
+    projects = client.get_all_projects()
     test_project = None
     for p in projects:
         if p.get('name') == "滴答清单MCP测试区域":
@@ -214,7 +214,7 @@ def test_task_id_query(client: TickTickClient, project_id: str, test_tasks: list
     print("\n   测试 2: 通过过滤器查找 task_id")
     
     # 获取所有项目
-    projects = client.get_projects()
+    projects = client.get_all_projects()
     
     # 创建 task_id 过滤器
     def task_id_filter(task):

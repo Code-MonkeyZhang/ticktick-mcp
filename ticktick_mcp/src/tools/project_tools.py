@@ -19,7 +19,7 @@ def register_project_tools(mcp: FastMCP):
     """Register all project-related MCP tools."""
     
     @mcp.tool()
-    async def get_projects() -> str:
+    async def get_all_projects() -> str:
         """
         Get all projects from TickTick.
         
@@ -28,7 +28,7 @@ def register_project_tools(mcp: FastMCP):
         """
         try:
             ticktick = ensure_client()
-            projects = ticktick.get_projects()
+            projects = ticktick.get_all_projects()
             if 'error' in projects:
                 return f"Error fetching projects: {projects['error']}"
             
@@ -41,7 +41,7 @@ def register_project_tools(mcp: FastMCP):
             
             return result
         except Exception as e:
-            logger.error(f"Error in get_projects: {e}")
+            logger.error(f"Error in get_all_projects: {e}")
             return f"Error retrieving projects: {str(e)}"
 
     @mcp.tool()

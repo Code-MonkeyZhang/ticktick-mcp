@@ -181,7 +181,7 @@ class TickTickClient:
             return {"error": str(e)}
     
     # Project methods
-    def get_projects(self) -> List[Dict]:
+    def get_all_projects(self) -> List[Dict]:
         """Gets all projects for the user."""
         return self._make_request("GET", "/project")
     

@@ -75,7 +75,7 @@ def setup_test_tasks(client: TickTickClient, results: TestResults):
     """创建测试任务（不同的截止日期）"""
     try:
         # 查找"滴答清单MCP测试区域"项目
-        projects = client.get_projects()
+        projects = client.get_all_projects()
         if 'error' in projects:
             results.record_fail("设置测试环境 - 获取项目", projects['error'])
             return False

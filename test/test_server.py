@@ -53,7 +53,7 @@ def test_ticktick_connection():
         print("✅ Successfully initialized TickTick client.")
         
         # Test API connectivity
-        projects = client.get_projects()
+        projects = client.get_all_projects()
         if 'error' in projects:
             print(f"❌ ERROR: Failed to fetch projects: {projects['error']}")
             print("Your access token may have expired. Try running 'uv run -m ticktick_mcp.cli auth' to refresh it.")
