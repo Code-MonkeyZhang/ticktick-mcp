@@ -9,7 +9,7 @@ import logging
 from mcp.server.fastmcp import FastMCP
 
 from ..config import ensure_client
-from ..utils.formatters import format_project, format_task
+from ..utils.formatters import format_project
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ def register_project_tools(mcp: FastMCP):
         Get all projects from TickTick.
         
         Note: This does not include the special "Inbox" project. 
-        To get inbox tasks, use get_project_tasks with project_id="inbox".
+        To get inbox tasks, use query_tasks(project_id="inbox").
         """
         try:
             ticktick = ensure_client()
@@ -62,50 +62,6 @@ def register_project_tools(mcp: FastMCP):
         except Exception as e:
             logger.error(f"Error in get_project: {e}")
             return f"Error retrieving project: {str(e)}"
-
-    @mcp.tool()
-    async def get_project_tasks(project_id: str) -> str:
-        """
-        Get all tasks in a specific project or inbox.
-        
-        Args:
-            project_id: ID of the project, or "inbox" to get inbox tasks
-        
-        Special values:
-            - "inbox": Get tasks from the Inbox (a special system list where tasks
-              without a specific project are stored)
-        
-        Examples:
-            - get_project_tasks("abc123") → Get tasks from project with ID "abc123"
-            - get_project_tasks("inbox") → Get tasks from Inbox
-        """
-        try:
-            ticktick = ensure_client()
-            project_data = ticktick.get_project_with_data(project_id)
-            if 'error' in project_data:
-                return f"Error fetching project data: {project_data['error']}"
-            
-            project = project_data.get('project', {})
-            tasks = project_data.get('tasks', [])
-            project_name = project.get('name', project_id)
-            
-            # Special message for empty inbox
-            if project_id.lower() == "inbox" and not tasks:
-                return "Your inbox is empty. 📭 Great job staying organized!"
-            
-            # General empty message for other projects
-            if not tasks:
-                return f"No tasks found in project '{project_name}'."
-            
-            # Format result
-            result = f"Found {len(tasks)} tasks in project '{project_name}':\n\n"
-            for i, task in enumerate(tasks, 1):
-                result += f"Task {i}:\n" + format_task(task) + "\n"
-            
-            return result
-        except Exception as e:
-            logger.error(f"Error in get_project_tasks: {e}")
-            return f"Error retrieving project tasks: {str(e)}"
 
     @mcp.tool()
     async def create_project(
