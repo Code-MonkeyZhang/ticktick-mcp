@@ -73,69 +73,41 @@ def register_query_tools(mcp: FastMCP):
             return f"Error retrieving projects: {str(e)}"
 
     @mcp.tool()
-    async def get_tasks_due_today() -> str:
-        """Get all tasks from TickTick that are due today. Ignores closed projects."""
-        try:
-            ticktick = ensure_client()
-            projects = ticktick.get_projects()
-            if 'error' in projects:
-                return f"Error fetching projects: {projects['error']}"
-            
-            def today_filter(task: Dict[str, Any]) -> bool:
-                return is_task_due_today(task)
-            
-            return get_project_tasks_by_filter(projects, today_filter, "due today", ticktick)
-            
-        except Exception as e:
-            logger.error(f"Error in get_tasks_due_today: {e}")
-            return f"Error retrieving projects: {str(e)}"
-
-    @mcp.tool()
-    async def get_overdue_tasks() -> str:
-        """Get all overdue tasks from TickTick. Ignores closed projects."""
-        try:
-            ticktick = ensure_client()
-            projects = ticktick.get_projects()
-            if 'error' in projects:
-                return f"Error fetching projects: {projects['error']}"
-            
-            def overdue_filter(task: Dict[str, Any]) -> bool:
-                return is_task_overdue(task)
-            
-            return get_project_tasks_by_filter(projects, overdue_filter, "overdue", ticktick)
-            
-        except Exception as e:
-            logger.error(f"Error in get_overdue_tasks: {e}")
-            return f"Error retrieving projects: {str(e)}"
-
-    @mcp.tool()
-    async def get_tasks_due_tomorrow() -> str:
-        """Get all tasks from TickTick that are due tomorrow. Ignores closed projects."""
-        try:
-            ticktick = ensure_client()
-            projects = ticktick.get_projects()
-            if 'error' in projects:
-                return f"Error fetching projects: {projects['error']}"
-            
-            def tomorrow_filter(task: Dict[str, Any]) -> bool:
-                return is_task_due_in_days(task, 1)
-            
-            return get_project_tasks_by_filter(projects, tomorrow_filter, "due tomorrow", ticktick)
-            
-        except Exception as e:
-            logger.error(f"Error in get_tasks_due_tomorrow: {e}")
-            return f"Error retrieving projects: {str(e)}"
-
-    @mcp.tool()
-    async def get_tasks_due_in_days(days: int) -> str:
+    async def query_tasks_by_date(
+        date_filter: str,
+        custom_days: int = None
+    ) -> str:
         """
-        Get all tasks from TickTick that are due in exactly X days. Ignores closed projects.
+        Query tasks by date/deadline criteria. Ignores closed projects.
         
         Args:
-            days: Number of days from today (e.g., 1 for tomorrow, 7 for next week)
+            date_filter: Date filter type. Must be one of:
+                - "today": Tasks due today
+                - "tomorrow": Tasks due tomorrow
+                - "overdue": Overdue tasks
+                - "next_7_days": Tasks due within the next 7 days
+                - "custom": Tasks due in a specific number of days (requires custom_days)
+            custom_days: Number of days from today (only required when date_filter="custom")
+                        e.g., 0 for today, 1 for tomorrow, 3 for 3 days from now
+        
+        Examples:
+            query_tasks_by_date("today") → tasks due today
+            query_tasks_by_date("tomorrow") → tasks due tomorrow
+            query_tasks_by_date("overdue") → overdue tasks
+            query_tasks_by_date("next_7_days") → tasks due within 7 days
+            query_tasks_by_date("custom", 3) → tasks due in exactly 3 days
         """
-        if days < 0:
-            return "Days must be a non-negative integer."
+        # Validate date_filter parameter
+        valid_filters = ["today", "tomorrow", "overdue", "next_7_days", "custom"]
+        if date_filter not in valid_filters:
+            return f"Invalid date_filter. Must be one of: {', '.join(valid_filters)}"
+        
+        # Validate custom_days when using custom filter
+        if date_filter == "custom":
+            if custom_days is None:
+                return "custom_days parameter is required when date_filter='custom'"
+            if custom_days < 0:
+                return "custom_days must be a non-negative integer"
         
         try:
             ticktick = ensure_client()
@@ -143,37 +115,35 @@ def register_query_tools(mcp: FastMCP):
             if 'error' in projects:
                 return f"Error fetching projects: {projects['error']}"
             
-            def days_filter(task: Dict[str, Any]) -> bool:
-                return is_task_due_in_days(task, days)
+            # Select appropriate filter function and description based on date_filter
+            if date_filter == "today":
+                filter_func = lambda task: is_task_due_today(task)
+                description = "due today"
+            elif date_filter == "tomorrow":
+                filter_func = lambda task: is_task_due_in_days(task, 1)
+                description = "due tomorrow"
+            elif date_filter == "overdue":
+                filter_func = lambda task: is_task_overdue(task)
+                description = "overdue"
+            elif date_filter == "next_7_days":
+                def week_filter(task: Dict[str, Any]) -> bool:
+                    # Check if task is due within the next 7 days (0-6 days from today)
+                    for day in range(7):
+                        if is_task_due_in_days(task, day):
+                            return True
+                    return False
+                filter_func = week_filter
+                description = "due within next 7 days"
+            else:  # custom
+                filter_func = lambda task: is_task_due_in_days(task, custom_days)
+                day_text = "today" if custom_days == 0 else f"in {custom_days} day{'s' if custom_days != 1 else ''}"
+                description = f"due {day_text}"
             
-            day_text = "today" if days == 0 else f"in {days} day{'s' if days != 1 else ''}"
-            return get_project_tasks_by_filter(projects, days_filter, f"due {day_text}", ticktick)
-            
-        except Exception as e:
-            logger.error(f"Error in get_tasks_due_in_days: {e}")
-            return f"Error retrieving projects: {str(e)}"
-
-    @mcp.tool()
-    async def get_tasks_due_this_week() -> str:
-        """Get all tasks from TickTick that are due within the next 7 days. Ignores closed projects."""
-        try:
-            ticktick = ensure_client()
-            projects = ticktick.get_projects()
-            if 'error' in projects:
-                return f"Error fetching projects: {projects['error']}"
-            
-            def week_filter(task: Dict[str, Any]) -> bool:
-                # Check if task is due within the next 7 days (0-6 days from today)
-                for day in range(7):
-                    if is_task_due_in_days(task, day):
-                        return True
-                return False
-            
-            return get_project_tasks_by_filter(projects, week_filter, "due this week", ticktick)
+            return get_project_tasks_by_filter(projects, filter_func, description, ticktick)
             
         except Exception as e:
-            logger.error(f"Error in get_tasks_due_this_week: {e}")
-            return f"Error retrieving projects: {str(e)}"
+            logger.error(f"Error in query_tasks_by_date: {e}")
+            return f"Error retrieving tasks: {str(e)}"
 
     @mcp.tool()
     async def search_tasks(search_term: str) -> str:
