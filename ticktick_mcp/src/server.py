@@ -11,7 +11,6 @@ from mcp.server.fastmcp import FastMCP
 from .config import initialize_client
 from .tools import register_project_tools, register_task_tools, register_query_tools
 
-# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -20,7 +19,7 @@ mcp = FastMCP("ticktick")
 
 
 def register_all_tools():
-    """Register all MCP tools from the various modules."""
+    """Register all MCP tools from modules."""
     register_project_tools(mcp)
     register_task_tools(mcp)
     register_query_tools(mcp)

@@ -3,11 +3,11 @@
 TickTick MCP 批量操作测试
 
 测试所有新的批量操作工具，包括：
-- create_tasks (单个和批量)
-- update_tasks (单个和批量)
-- complete_tasks (单个和批量)
-- delete_tasks (单个和批量)
-- create_subtasks (单个和批量)
+- create_tasks 
+- update_tasks 
+- complete_tasks
+- delete_tasks 
+- create_subtasks 
 """
 
 import sys

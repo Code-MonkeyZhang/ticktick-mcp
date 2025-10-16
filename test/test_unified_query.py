@@ -143,7 +143,7 @@ def test_single_filters(client: TickTickClient, project_id: str):
 
 def test_combined_filters(client: TickTickClient, project_id: str):
     """测试组合过滤器"""
-    print_section("测试 2: 组合过滤器 (AND 逻辑)")
+    print_section("测试 2: 组合过滤器 ")
     
     from ticktick_mcp.src.utils.validators import (
         is_task_due_today,
@@ -331,7 +331,7 @@ def main():
         print("   - 支持多维度过滤")
         print("   - 支持过滤器组合")
         print("   - 支持项目限定")
-        print("   - 支持 task_id 精确查询（替代 get_task）")
+        print("   - 支持 task_id 精确查询")
         print("="*70)
         
         return 0
